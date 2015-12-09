@@ -1,6 +1,8 @@
 package nachos.filesys;
 
 import java.util.LinkedList;
+import java.util.HashSet;
+
 import nachos.machine.Disk;
 import nachos.machine.Lib;
 
@@ -21,42 +23,71 @@ public class FreeList extends File
   static int size = Lib.divRoundUp(Disk.NumSectors, 8);
   
   /** maintain address of all the free sectors */
-  private LinkedList<Integer> free_list;
+  private LinkedList<Integer> free_list = new LinkedList<Integer>();
+  
+  private HashSet<Integer> used = new HashSet<Integer>();
   
   public FreeList (INode inode)
   {
     super(inode);
-    free_list = new LinkedList<Integer>();
   }
   
   public void init ()
   {
     for (int i = 2; i < Disk.NumSectors; ++i)
       free_list.add(i);
+    
+    save();
   }
   
   /** allocate a new sector in the disk */
   public int allocate ()
   {
-    //TODO implement this
-    return 0;
+	  return free_list.removeFirst();
   }
   
   /** deallocate a sector to be reused */
   public void deallocate (int sec)
   {
-    //TODO implement this
+	  free_list.add(sec);
   }
   
   /** save the content of freelist to the disk */
   public void save ()
   {
-    //TODO implement this
+	  BitMap bit_map = new BitMap(Disk.NumSectors);
+	  for(Integer k : free_list)
+		  bit_map.mark(k);
+	  
+	  bit_map.writeBack(this);
+	  inode.save();
   }
   
   /** load the content of freelist from the disk */
   public void load ()
   {
-    //TODO implement this
+	  BitMap bit_map = new BitMap(Disk.NumSectors);
+	  bit_map.fetchFrom(this);
+	  for(int i=0;i<Disk.NumSectors;i++) {
+		  if(bit_map.test(i))
+			  free_list.add(i);
+	  }
+  }
+  
+  public int size() {
+	  return free_list.size();
+  }
+  
+  public void calcUsed() {
+	  for(int i=0;i<Disk.NumSectors;i++)
+		  used.add(i);
+	  
+	  for(Integer k : free_list)
+		  used.remove(k);
+  }
+  
+  public boolean isUsed(int i) {
+	  return used.contains(i);
   }
 }
+

@@ -2,6 +2,9 @@ package nachos.filesys;
 
 import java.util.LinkedList;
 
+import nachos.machine.Disk;
+import nachos.machine.Machine;
+
 /**
  * INode contains detail information about a file.
  * Most important among these is the list of sector numbers the file occupied, 
@@ -65,33 +68,144 @@ public class INode
   }
   
   /** get the sector number of a position in the file  */
-  public int getSector (int pos)
+  public Integer getSectorAddr (int i)
   {
-    //TODO implement this
-    return 0;
+	  if(i>=sec_addr.size())
+		  return null;
+	  else
+		  return sec_addr.get(i);
   }
   
   /** change the file size and adjust the content in the inode accordingly */
   public void setFileSize (int size)
   {
-    //TODO implement this
+    if(file_size==size)
+    	return;
+    else {
+    	file_size=size;
+    	int sectorNum = file_size/Disk.SectorSize+(file_size%Disk.SectorSize != 0 ? 0 : 1);
+    	if(sectorNum==sec_addr.size())
+    		return;
+    	else if(sectorNum>sec_addr.size()) {
+    		for(int i=sec_addr.size();i<sectorNum;i++)
+    			sec_addr.add(FilesysKernel.realFileSystem.getFreeList().allocate());
+    	}
+    	else { //sectorNum < sec_addr.size()
+    		for(int i=sectorNum;i<sec_addr.size();i++)
+    			FilesysKernel.realFileSystem.getFreeList().deallocate(sec_addr.remove(i));
+    	}
+    }
   }
   
   /** free the disk space occupied by the file (including inode) */
   public void free ()
   {
-    //TODO implement this
+    file_size=0;
+    for(Integer secAddr : sec_addr)
+    	FilesysKernel.realFileSystem.getFreeList().deallocate(secAddr);
+    
+    sec_addr.clear();
+    
+    for(Integer addrExt : addr_ext)
+    	FilesysKernel.realFileSystem.getFreeList().deallocate(addrExt);
+    
+    addr_ext.clear();
+    
+    FilesysKernel.realFileSystem.getFreeList().deallocate(addr);
+    
+    RealFileSystem.removeInode(addr);
   }
   
   /** load inode content from the disk */
   public void load ()
   {
-    //TODO implement this
+    int curSec=0;
+    byte[] buffer = new byte[Disk.SectorSize];
+    Machine.synchDisk().readSector(addr, buffer, 0);
+    int pos=0;
+    
+    file_size=Disk.intInt(buffer, pos);
+    pos+=4;
+    file_type=Disk.intInt(buffer, pos);
+    pos+=4;
+    link_count=Disk.intInt(buffer, pos);
+    pos+=4;
+    int addr_ext_size=Disk.intInt(buffer, pos);
+    pos+=4;
+    int sec_addr_size=Disk.intInt(buffer, pos);
+    pos+=4;
+    
+    for(int i=0;i<addr_ext_size;i++,pos+=4) {
+    	if(pos==Disk.SectorSize) {
+    		pos=0;
+    		Machine.synchDisk().readSector(addr_ext.get(curSec++),buffer,0);
+    	}
+    	addr_ext.add(Disk.intInt(buffer, pos));
+    }
+    
+    for(int i=0;i<sec_addr_size;i++,pos+=4) {
+    	if(pos==Disk.SectorSize) {
+    		pos=0;
+    		Machine.synchDisk().readSector(addr_ext.get(curSec++), buffer, 0);
+    	}
+    	sec_addr.add(Disk.intInt(buffer, pos));
+    }
   }
   
   /** save inode content to the disk */
   public void save ()
   {
-    //TODO implement this
+	  if(addr==-1)
+		  return;
+	  int curSec=0;
+	  int curAddr= addr;
+	  int len = (5+addr_ext.size()+sec_addr.size())*4;
+	  while(len > (addr_ext.size()+1)*Disk.SectorSize) {
+		  len+=4;
+		  addr_ext.add(FilesysKernel.realFileSystem.getFreeList().allocate());
+	  }
+	  byte[] buffer = new byte[Disk.SectorSize];
+	  int pos=0;
+	  
+	  Disk.extInt(file_size, buffer, pos);
+	  pos+=4;
+	  Disk.extInt(file_type, buffer, pos);
+	  pos+=4;
+	  Disk.extInt(link_count, buffer, pos);
+	  pos+=4;
+	  Disk.extInt(addr_ext.size(), buffer, pos);
+	  pos+=4;
+	  Disk.extInt(sec_addr.size(), buffer, pos);
+	  pos+=4;
+	  
+	  for(int i=0;i<addr_ext.size();i++,pos+=4) {
+		  if(pos==Disk.SectorSize) {
+			  pos=0;
+			  Machine.synchDisk().writeSector(curAddr, buffer, 0);
+			  curAddr=addr_ext.get(curSec++);
+		  }
+		  Disk.extInt(addr_ext.get(i), buffer, pos);
+	  }
+	  
+	  for(int i=0;i<sec_addr.size();i++,pos+=4) {
+		  if(pos==Disk.SectorSize) {
+			  pos=0;
+			  Machine.synchDisk().writeSector(curAddr, buffer, 0);
+			  curAddr=addr_ext.get(curSec++);
+		  }
+		  Disk.extInt(sec_addr.get(i), buffer, pos);
+	  }
+	  
+	  Machine.synchDisk().writeSector(curAddr, buffer, 0);
+	  
+  }
+  
+  public int sectorNum() {
+	  return sec_addr.size();
+  }
+  
+  public void tryFree() {
+	  if(use_count == 0 && link_count==0)
+		  free();
   }
 }

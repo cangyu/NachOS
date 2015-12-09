@@ -12,4 +12,10 @@ class FolderEntry
   
   /** the sector number of the inode */
   int addr;
+  
+  FolderEntry(String name,int addr)
+  {
+	  this.addr=addr;
+	  this.name=name;
+  }
 }
